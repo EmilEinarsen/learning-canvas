@@ -1,106 +1,12 @@
-/* let canvasWidth = 500
-let canvasHeight = 500
-let canvas = null
-let bounds = null
-let ctx = null
-let hasLoaded = false
-
-let startX, startY, mouseX, mouseY
-startX, startY, mouseX, mouseY = 0
-let isDrawing = false
-let existingLines = []
-
-window.onload = function() {
-	canvas = document.querySelector("canvas")
-	canvas.width = canvasWidth
-	canvas.height = canvasHeight
-	canvas.onmousedown = onmousedown
-	canvas.onmouseup = onmouseup
-	canvas.onmousemove = onmousemove
-	
-	bounds = canvas.getBoundingClientRect()
-	ctx = canvas.getContext("2d")
-	hasLoaded = true
-	
-	draw()
-}
-
-function draw() {
-	ctx.fillStyle = "#333333"
-	ctx.fillRect(0,0,canvasWidth,canvasHeight)
-	
-	ctx.strokeStyle = "black"
-	ctx.lineWidth = 2
-	
-	
-	existingLines.forEach(({startX, startY, endX, endY}) => {
-		ctx.beginPath()
-		ctx.moveTo(startX, startY)
-		ctx.lineTo(endX, endY)
-		ctx.stroke()
-	})
-	
-	
-	if (isDrawing) {
-		ctx.strokeStyle = "darkred"
-		ctx.lineWidth = 3
-		ctx.beginPath()
-		ctx.moveTo(startX, startY)
-		ctx.lineTo(mouseX, mouseY)
-		ctx.stroke()
-	}
-}
-
-function onmousedown(e) {
-	if (!hasLoaded) return 
-	if (!isDrawing) {
-		const { x, y } = getMouseCoordinates(e)
-		startX = x
-		startY = y
-		
-		isDrawing = true
-	}
-	
-	draw()
-}
-
-function onmouseup(e) {
-	if (!hasLoaded) return
-	if (isDrawing) {
-		existingLines.push({
-			startX: startX,
-			startY: startY,
-			endX: mouseX,
-			endY: mouseY
-		})
-		isDrawing = false
-	}
-	draw()
-}
-
-function onmousemove(e) {
-	if (!hasLoaded) return
-	const { x, y } = getMouseCoordinates(e)
-	mouseX = x
-	mouseY = y
-	
-	if (isDrawing) draw()
-}
-
-function getMouseCoordinates(e) {
-	return {
-		x: e.clientX - bounds.left,
-		y: e.clientY - bounds.top
-	}
-} */
 let canvas, ctx
+const preset = {
+	snapDegree: 15
+}
 const data = {
 	bounds: null,
 	isLoaded: false,
 	isDrawing: false,
-	startCoordinates: {},
-	angle: 0,
-	lengths: {},
+	start: {},
 	lines: [],
 }
 
@@ -119,22 +25,21 @@ window.onload = function() {
 	draw()
 }
 
-function draw() {
+function draw(e) {
 	ctx.fillStyle = "#eee"
 	ctx.fillRect(0,0,canvas.width,canvas.height)
 	
-	/* ctx.strokeStyle = "black"
+	ctx.strokeStyle = "black"
 	ctx.lineWidth = 2
-	data.lines.forEach(line => {}) */
+	data.lines.forEach(line => drawLine(line))
 	
 	
 	if (data.isDrawing) {
 		ctx.strokeStyle = "darkred"
 		ctx.lineWidth = 3
 		drawLine({
-			start: data.startCoordinates, 
-			length: data.lengths, 
-			angle: data.angle,
+			start: data.start, 
+			length: getLength(e),
 		})
 	}
 }
@@ -142,33 +47,27 @@ function draw() {
 function onmousedown(e) {
 	if (!data.isLoaded) return 
 	if (!data.isDrawing) {
-		data.startCoordinates = getMouseCoordinates(e)
+		data.start = getMouseCoordinates(e)
 		//console.log(getMouseCoordinates(e))
-		setLength(e)
-		setAngle()
+		
 		data.isDrawing = true
 	}
-	draw()
+	draw(e)
 }
 
 function onmousemove(e) {
 	if (!(data.isLoaded && data.isDrawing)) return
-	setLength(e)
-	setAngle()
 	//console.log(data.lengths)
-	draw()
+	draw(e)
 }
 
-function onmouseup() {
+function onmouseup(e) {
 	if (!(data.isLoaded && data.isDrawing)) return
-	data.lines.push({
-		x: data.startCoordinate,
-		length: data.lengths.length, 
-		angle: data.angle 
-	})
+
+	data.lines.push({ start: data.start, length: getLength(e) })
+
 	data.isDrawing = false
-	
-	draw()
+	draw(e)
 }
 
 function getMouseCoordinates(e) {
@@ -178,36 +77,60 @@ function getMouseCoordinates(e) {
 	}
 }
 
-function lineAtAngle() {
+function getLength(e) {
+	const { snapDegree } = preset
 
-}
-
-function setLength(e) {
-	const { x, y } = getMouseCoordinates(e)
-	const lengthX = data.startCoordinates.x - x
-	const lengthY = data.startCoordinates.y - y
-	const length = Math.sqrt( (Math.pow(lengthX,2) + Math.pow(lengthY,2) ))
+	const { x, y, d } = getLengths()
+	// flips the length inaccordance with x-axis, results in 360 degrees instead of 180
+	const length = (x < 0 ? -1 : 1) * d 
 	
-	data.lengths = { 
-		lengthX: -lengthX, 
-		lengthY: lengthY, 
-		length: length,
+	/**
+	 * Length is sufficent to draw the line. 
+	 * However, since we want the angle to be a mutiple of snapDegree,
+	 * it has to be round of to the nerest mutiple 
+	 * and thereafter used to calculate the true length
+	 */
+	const angle = getAngle()
+	return { 
+		x: length * Math.cos(angle), 
+		y: length * Math.sin(angle),
+	}
+
+	function getLengths() {
+		// end point
+		const end = getMouseCoordinates(e)
+
+		// length of x-axis
+		const x = - data.start.x + end.x
+
+		// length of y-axis
+		const y = - data.start.y + end.y
+
+		// length is the diagonal that x and y results in
+		let d = Math.sqrt( (Math.pow(x,2) + Math.pow(y,2) ))
+
+		return { x, y, d }
+	}
+
+	function getAngle() {
+		const arctan = Math.atan( y / x )
+		
+		// converts arctan to degrees
+		let degrees = arctan * 180 / Math.PI
+		
+		// rounds of to the nerest multiple of snapDegree 
+		degrees = snapDegree * Math.round(degrees/snapDegree)
+		
+		// converts degrees to arctan 
+		return degrees * Math.PI / 180
 	}
 }
 
-function setAngle() {
-	const arctan = Math.atan2(data.lengths.lengthY, data.lengths.lengthX)
-	const angle = arctan * 180 / Math.PI
-	data.angle = Math.floor(angle)
-	console.log(data.angle)
-}
-
-function drawLine({start, length: { lengthX, lengthY }, angle}) {
+function drawLine({start, length}) {
 	const end = {
-		x: start.x + lengthX * Math.cos((angle * Math.PI)/180),
-		y: start.y + lengthY * Math.sin((angle * Math.PI)/180),
+		x: start.x + length.x,
+		y: start.y + length.y,
 	}
-
 	ctx.beginPath()
 	ctx.moveTo(start.x, start.y)
 	ctx.lineTo(end.x, end.y)
