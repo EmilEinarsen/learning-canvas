@@ -1,6 +1,7 @@
 let canvas, ctx
 const preset = {
-	snapDegree: 15
+	snapDegree: 15,
+	drawArea: 25*25,
 }
 const data = {
 	bounds: null,
@@ -11,7 +12,13 @@ const data = {
 	mouseCoordinates: e => ({
 		x: e.clientX - data.bounds.left,
 		y: e.clientY - data.bounds.top
-	})
+	}),
+	endCoordinates: (start, length) => ({
+		x: start.x + length.x,
+		y: start.y + length.y,
+	}),
+	lineEdges: [],
+	index: 0
 }
 
 window.addEventListener('load', () => {
@@ -22,8 +29,25 @@ window.addEventListener('load', () => {
 
 	canvas.addEventListener('mousedown', e => {
 		if (!data.isLoaded || data.isDrawing) return
-		data.start = data.mouseCoordinates(e)
+		const coordinates = data.mouseCoordinates(e)
 		data.isDrawing = true
+
+		if(data.lineEdges.length) {
+			const { drawArea } = preset
+			const allowedDistance = Math.sqrt(drawArea)
+			data.lineEdges.forEach((edge, index) => {
+				const distanceX = Math.abs(coordinates.x - edge.x)
+				const distanceY = Math.abs(coordinates.y - edge.y)
+				console.log(distanceX, distanceY)
+				if(distanceX < allowedDistance && distanceY < allowedDistance) data.index = index
+			})
+			if(data.index === undefined) {
+				data.isDrawing = false
+				return
+			}
+		} else data.lineEdges[0] = coordinates
+
+		data.start = data.lineEdges[data.index]
 		newLayer(e)
 	})
 
@@ -31,10 +55,15 @@ window.addEventListener('load', () => {
 
 	canvas.addEventListener('mouseup', e => {
 		if (!(data.isLoaded && data.isDrawing)) return
+		const length = getLength(e)
+		const end = data.endCoordinates(data.start, length)
 
-		data.lines.push({ start: data.start, length: getLength(e) })
+		data.lines.push({ start: data.start, length })
+		if(data.lineEdges.length === 1) data.lineEdges[1] = end
+		else data.lineEdges[data.index] = end
 
 		data.isDrawing = false
+		data.index = undefined
 		newLayer(e)
 	})
 
@@ -44,13 +73,13 @@ window.addEventListener('load', () => {
 
 	data.isLoaded = true
 	newLayer()
-	
+
 })
 
 
 
 function newLayer(e) {
-	const { lines, isDrawing, start } = data
+	const { lines, isDrawing, start, endCoordinates } = data
 
 	// Hiddes oldlayer
 	ctx.fillStyle = "#eee"
@@ -73,10 +102,7 @@ function newLayer(e) {
 			ctx.lineWidth = 2
 		}
 		
-		const end = {
-			x: start.x + length.x,
-			y: start.y + length.y,
-		}
+		const end = endCoordinates(start, length)
 
 		ctx.beginPath()
 		ctx.moveTo(start.x, start.y)
