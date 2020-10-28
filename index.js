@@ -1,7 +1,8 @@
 let canvas, ctx
 const preset = {
 	snapDegree: 15,
-	drawRadius: 12.5
+	drawRadius: 12.5,
+	lineWidth: 5
 }
 const data = {
 	bounds: null,
@@ -29,24 +30,12 @@ window.addEventListener('load', () => {
 
 	canvas.addEventListener('mousedown', e => {
 		if (!data.isLoaded || data.isDrawing) return
-		const coordinates = data.mouseCoordinates(e)
-		data.isDrawing = true
 
-		if(data.lineEdges.length) {
-			const { drawRadius } = preset
-			data.lineEdges.forEach((edge, index) => {
-				const distanceX = Math.abs(coordinates.x - edge.x)
-				const distanceY = Math.abs(coordinates.y - edge.y)
-				if(distanceX < drawRadius && distanceY < drawRadius) data.index = index
-			})
-			if(data.index === undefined) {
-				data.isDrawing = false
-				return
-			}
-		} else data.lineEdges[0] = coordinates
-
-		data.start = data.lineEdges[data.index]
-		newLayer(e)
+		// Controlls drawing 
+		if(shouldDraw(e)) {
+			data.start = data.lineEdges[data.index]
+			newLayer(e)
+		}
 	})
 
 	canvas.addEventListener('mousemove', e => {
@@ -78,11 +67,34 @@ window.addEventListener('load', () => {
 
 })
 
+function shouldDraw(e) {
+	const { drawRadius } = preset
+	const coordinates = data.mouseCoordinates(e)
 
+	/**
+	 * Returns true if it should draw.
+	 * Otherwise doesn't return, resulting in a undefined (falsy) return
+	 */
+
+	// exception for the initial/first line
+	if(!data.lineEdges.length) data.lineEdges[data.index] = coordinates
+	
+	// if starting point is within drawRadius of a edge, then define it's index as index
+	else data.lineEdges.forEach((edge, index) => {
+		const distanceX = Math.abs(coordinates.x - edge.x)
+		const distanceY = Math.abs(coordinates.y - edge.y)
+		if(distanceX < drawRadius && distanceY < drawRadius) 
+			data.index = index
+	})
+
+	// allow draw if an index was defined
+	if(data.index !== undefined) 
+		return data.isDrawing = true
+}
 
 function newLayer(e) {
-	const { lines, isDrawing, start, endCoordinates, lineEdges } = data
-	const { drawRadius } = preset
+	const { lines, isDrawing, start, endCoordinates, lineEdges, index } = data
+	const { drawRadius, lineWidth } = preset
 
 	// Hiddes oldlayer
 	ctx.fillStyle = "#eee"
@@ -92,20 +104,17 @@ function newLayer(e) {
 	lines.forEach(line => drawLine(line))
 
 	// draws circles at the edges
-	lineEdges.forEach(edge => drawCircle({ start: edge, radius: drawRadius }))
+	lineEdges.forEach((edge, i) => drawCircle(
+		{ start: edge, radius: drawRadius }, 
+		i === index
+	))
 	
 	// draws active line
 	if (!isDrawing) return
 	drawLine({ start: start, length: getLength(e) }, true)
 
 	function drawLine({start, length}, active) {
-		if(active) {
-			ctx.strokeStyle = "darkred"
-			ctx.lineWidth = 3
-		} else {
-			ctx.strokeStyle = "black"
-			ctx.lineWidth = 2
-		}
+		lineStyle(active)
 		
 		const end = endCoordinates(start, length)
 
@@ -115,10 +124,22 @@ function newLayer(e) {
 		ctx.stroke()
 	}
 
-	function drawCircle({ start: { x, y }, radius }){
+	function drawCircle({ start: { x, y }, radius }, active){
+		lineStyle(active)
+
 		ctx.beginPath()
 		ctx.arc(x, y, radius, 0, 2 * Math.PI)
 		ctx.stroke()
+	}
+
+	function lineStyle(active) {
+		if(active) {
+			ctx.strokeStyle = "darkred"
+			ctx.lineWidth = lineWidth*1.5
+		} else {
+			ctx.strokeStyle = "black"
+			ctx.lineWidth = lineWidth
+		}
 	}
 }
 
@@ -154,10 +175,10 @@ function getLength(e) {
 		const end = mouseCoordinates(e)
 
 		// length of x-axis
-		const x = end.x - start.x
+		let x = end.x - start.x
 
 		// length of y-axis
-		const y = end.y - start.y
+		let y = end.y - start.y
 
 		// the hypotenuse that x and y results in
 		let h = pythagorean(x,y)
