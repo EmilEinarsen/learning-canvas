@@ -1,7 +1,7 @@
 let canvas, ctx
 const preset = {
 	snapDegree: 15,
-	drawArea: 25*25,
+	drawRadius: 12.5
 }
 const data = {
 	bounds: null,
@@ -33,13 +33,11 @@ window.addEventListener('load', () => {
 		data.isDrawing = true
 
 		if(data.lineEdges.length) {
-			const { drawArea } = preset
-			const allowedDistance = Math.sqrt(drawArea)
+			const { drawRadius } = preset
 			data.lineEdges.forEach((edge, index) => {
 				const distanceX = Math.abs(coordinates.x - edge.x)
 				const distanceY = Math.abs(coordinates.y - edge.y)
-				console.log(distanceX, distanceY)
-				if(distanceX < allowedDistance && distanceY < allowedDistance) data.index = index
+				if(distanceX < drawRadius && distanceY < drawRadius) data.index = index
 			})
 			if(data.index === undefined) {
 				data.isDrawing = false
@@ -51,16 +49,20 @@ window.addEventListener('load', () => {
 		newLayer(e)
 	})
 
-	canvas.addEventListener('mousemove', e => data.isLoaded && data.isDrawing && newLayer(e) )
+	canvas.addEventListener('mousemove', e => {
+		if(!(data.isLoaded && data.isDrawing)) return
+
+		const end = data.endCoordinates(data.start, getLength(e))
+		if(data.lineEdges.length === 1) data.lineEdges[1] = end
+		else data.lineEdges[data.index] = end
+
+		newLayer(e)
+	} )
 
 	canvas.addEventListener('mouseup', e => {
 		if (!(data.isLoaded && data.isDrawing)) return
-		const length = getLength(e)
-		const end = data.endCoordinates(data.start, length)
-
-		data.lines.push({ start: data.start, length })
-		if(data.lineEdges.length === 1) data.lineEdges[1] = end
-		else data.lineEdges[data.index] = end
+		
+		data.lines.push({ start: data.start, length: getLength(e) })
 
 		data.isDrawing = false
 		data.index = undefined
@@ -79,21 +81,24 @@ window.addEventListener('load', () => {
 
 
 function newLayer(e) {
-	const { lines, isDrawing, start, endCoordinates } = data
+	const { lines, isDrawing, start, endCoordinates, lineEdges } = data
+	const { drawRadius } = preset
 
 	// Hiddes oldlayer
 	ctx.fillStyle = "#eee"
 	ctx.fillRect(0,0,canvas.width,canvas.height)
 	
-	// Redraws saved lines
-	
-	lines.forEach(line => draw(line))
+	// redraws saved lines
+	lines.forEach(line => drawLine(line))
+
+	// draws circles at the edges
+	lineEdges.forEach(edge => drawCircle({ start: edge, radius: drawRadius }))
 	
 	// draws active line
 	if (!isDrawing) return
-	draw({ start: start, length: getLength(e) }, true)
+	drawLine({ start: start, length: getLength(e) }, true)
 
-	function draw({start, length}, active) {
+	function drawLine({start, length}, active) {
 		if(active) {
 			ctx.strokeStyle = "darkred"
 			ctx.lineWidth = 3
@@ -107,6 +112,12 @@ function newLayer(e) {
 		ctx.beginPath()
 		ctx.moveTo(start.x, start.y)
 		ctx.lineTo(end.x, end.y)
+		ctx.stroke()
+	}
+
+	function drawCircle({ start: { x, y }, radius }){
+		ctx.beginPath()
+		ctx.arc(x, y, radius, 0, 2 * Math.PI)
 		ctx.stroke()
 	}
 }
