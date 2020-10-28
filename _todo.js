@@ -12,7 +12,7 @@
  * add a preset for line thickness
  * 
  * todo4:
- * 
+ * rewrite should draw to check if there is a starting point and then draw.
  * 
  * 
  * 

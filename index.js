@@ -9,7 +9,8 @@ const data = {
 	isLoaded: false,
 	isDrawing: false,
 	start: {},
-	lines: [],
+	end: {},
+	coordinates: [],
 	mouseCoordinates: e => ({
 		x: e.clientX - data.bounds.left,
 		y: e.clientY - data.bounds.top
@@ -18,8 +19,7 @@ const data = {
 		x: start.x + length.x,
 		y: start.y + length.y,
 	}),
-	lineEdges: [],
-	index: 0
+	whichEdge: true
 }
 
 window.addEventListener('load', () => {
@@ -32,26 +32,24 @@ window.addEventListener('load', () => {
 		if (!data.isLoaded || data.isDrawing) return
 
 		// Controlls drawing 
-		if(shouldDraw(e)) {
-			data.start = data.lineEdges[data.index]
-			newLayer(e)
-		}
+		shouldDraw(e)
+
+		// if(data.isDrawing) newLayer(e)
 	})
 
 	canvas.addEventListener('mousemove', e => {
 		if(!(data.isLoaded && data.isDrawing)) return
 
-		const end = data.endCoordinates(data.start, getLength(e))
-		if(data.lineEdges.length === 1) data.lineEdges[1] = end
-		else data.lineEdges[data.index] = end
+		data.end = data.endCoordinates(data.start, getLength(e))
 
 		newLayer(e)
 	} )
 
 	canvas.addEventListener('mouseup', e => {
 		if (!(data.isLoaded && data.isDrawing)) return
-		
-		data.lines.push({ start: data.start, length: getLength(e) })
+
+		if(data.whichEdge) data.coordinates.push( data.end )
+		else if(!data.whichEdge) data.coordinates.unshift( data.end )
 
 		data.isDrawing = false
 		data.index = undefined
@@ -77,23 +75,28 @@ function shouldDraw(e) {
 	 */
 
 	// exception for the initial/first line
-	if(!data.lineEdges.length) data.lineEdges[data.index] = coordinates
-	
+	if(!data.coordinates.length) {
+		data.coordinates.push(coordinates)
+		data.start = coordinates
+		data.isDrawing = true
+	}
 	// if starting point is within drawRadius of a edge, then define it's index as index
-	else data.lineEdges.forEach((edge, index) => {
+	else [ 
+		data.coordinates[0], 
+		data.coordinates[data.coordinates.length-1] 
+	].forEach((edge, index) => {
 		const distanceX = Math.abs(coordinates.x - edge.x)
 		const distanceY = Math.abs(coordinates.y - edge.y)
-		if(distanceX < drawRadius && distanceY < drawRadius) 
-			data.index = index
+		if(distanceX < drawRadius && distanceY < drawRadius) {
+			data.isDrawing = true
+			data.whichEdge = index
+			data.start = data.coordinates[index ? data.coordinates.length-1 : 0]
+		}
 	})
-
-	// allow draw if an index was defined
-	if(data.index !== undefined) 
-		return data.isDrawing = true
 }
 
 function newLayer(e) {
-	const { lines, isDrawing, start, endCoordinates, lineEdges, index } = data
+	const { coordinates, isDrawing, start, end, whichEdge } = data
 	const { drawRadius, lineWidth } = preset
 
 	// Hiddes oldlayer
@@ -101,23 +104,30 @@ function newLayer(e) {
 	ctx.fillRect(0,0,canvas.width,canvas.height)
 	
 	// redraws saved lines
-	lines.forEach(line => drawLine(line))
+	if(coordinates.length > 1) drawStoredLines()
 
 	// draws circles at the edges
-	lineEdges.forEach((edge, i) => drawCircle(
-		{ start: edge, radius: drawRadius }, 
-		i === index
-	))
+	whichEdge && drawCircle({ start: coordinates[0], radius: drawRadius })
+	!whichEdge && drawCircle({ start: coordinates[coordinates.length-1], radius: drawRadius })
+	drawCircle({ start: end, radius: drawRadius })
 	
 	// draws active line
 	if (!isDrawing) return
-	drawLine({ start: start, length: getLength(e) }, true)
+	drawLine({ start, end }, true)
+	
 
-	function drawLine({start, length}, active) {
+	function drawStoredLines() {
+		let pointer = 1
+		while(pointer < coordinates.length){
+			drawLine({
+				start: coordinates[pointer-1], 
+				end: coordinates[pointer]
+			})
+			pointer++
+	}}
+
+	function drawLine({start, end}, active) {
 		lineStyle(active)
-		
-		const end = endCoordinates(start, length)
-
 		ctx.beginPath()
 		ctx.moveTo(start.x, start.y)
 		ctx.lineTo(end.x, end.y)
@@ -126,7 +136,6 @@ function newLayer(e) {
 
 	function drawCircle({ start: { x, y }, radius }, active){
 		lineStyle(active)
-
 		ctx.beginPath()
 		ctx.arc(x, y, radius, 0, 2 * Math.PI)
 		ctx.stroke()
