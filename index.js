@@ -15,10 +15,6 @@ const data = {
 		x: e.clientX - data.bounds.left,
 		y: e.clientY - data.bounds.top
 	}),
-	endCoordinate: (start, length) => ({
-		x: start.x + length.x,
-		y: start.y + length.y,
-	}),
 	lineEdges: [],
 
 	/**
@@ -40,7 +36,7 @@ const data = {
 
 
 /** 
- * ! Process 
+ * * Process 
 */
 window.onload = () => {
 	canvas = document.querySelector("canvas")
@@ -54,6 +50,11 @@ window.onload = () => {
 	canvas.onmouseup = mouseUp
 
 	data.isLoaded = true
+	newLayer()
+}
+window.onresize = () => {
+	canvas.width = innerWidth
+	canvas.height = innerHeight
 	newLayer()
 }
 mouseDown = e => {
@@ -75,7 +76,7 @@ mouseMove = e => {
 
 
 	function drawProcess() {
-		const coordinate = data.endCoordinate(data.start, getLength(e))
+		const coordinate = getEnd(e)
 	
 		
 		if(data.lineEdges.length !== 1) data.lineEdges[data.edge] = coordinate
@@ -91,16 +92,17 @@ mouseUp = e => {
 
 	data.isDrawing && drawProcess()
 
-	
+
 	function drawProcess() {
-		const coordinate = data.endCoordinate(data.start, getLength(e))
+		const coordinate = getEnd(e)
 		data.lineEdges[data.edge] = coordinate
 		
-		/** pushes or unshifts coordinate onto 
+		/** 
+		 * pushes or unshifts coordinate onto 
 		 * data.coordinates depending on which edge 
 		 */
 		;( 
-			array => data.edge === data.EDGES.RIGHT ? array.push( coordinate ) : array.unshift( coordinate )
+			array => data.edge === data.EDGES.RIGHT ? array.unshift( coordinate ) : array.push( coordinate )
 		)(data.coordinates)
 
 		reset()
@@ -115,13 +117,13 @@ mouseUp = e => {
 	}
 }
 /** 
- * ! End Process 
+ * * End Process 
 */
 
 
 
 /** 
- * ! Delegations 
+ * * Delegations 
 */
 function requestNewLine(e) {
 	const { drawRadius } = preset
@@ -134,7 +136,8 @@ function requestNewLine(e) {
 		data.coordinates.push(coordinate)
 	}
 	
-	/** if the requested start coordinate is within drawRadius 
+	/** 
+	 * if the requested start coordinate is within drawRadius 
 	 * of a edge coordinate, then define it as edge
 	 */
 	else data.lineEdges.forEach((edge, index) => {
@@ -153,7 +156,7 @@ function requestNewLine(e) {
 	data.start = data.lineEdges[data.edge]
 }
 
-function newLayer(e) {
+function newLayer() {
 	// Hiddes oldlayer
 	ctx.fillStyle = "#eee"
 	ctx.fillRect(0,0,canvas.width,canvas.height)
@@ -164,15 +167,20 @@ function newLayer(e) {
 		end: data.coordinates[pointer],
 	})
 
+	// draws active line
+	if (data.isDrawing)
+		drawLine({ 
+			start: data.start, 
+			end: data.lineEdges[data.edge] 
+		}, true)
+
 	// draws circles at the edges, to mark where you can draw
 	data.lineEdges.forEach((coordinate, i) => drawCircle(
 		{ coordinate, radius: preset.drawRadius }, 
 		i === data.edge,
 	))
 	
-	// draws active line
-	if (!data.isDrawing) return
-	drawLine({ start: data.start, end: data.lineEdges[data.edge] }, true)
+	
 
 
 	function drawLine({start, end}, active) {
@@ -188,6 +196,7 @@ function newLayer(e) {
 		ctx.beginPath()
 		ctx.arc(x, y, radius, 0, 2 * Math.PI)
 		ctx.stroke()
+		ctx.fill()
 	}
 
 	function lineStyle(active) {
@@ -201,7 +210,7 @@ function newLayer(e) {
 	}
 }
 
-function getLength(e) {
+function getEnd(e) {
 	let { x, y, h } = getLengths()
 
 	// flips the hypotenuse inaccordance with x-axis, results in 360 degrees instead of 180
@@ -225,9 +234,13 @@ function getLength(e) {
 
 	/**
 	 * x and y are used to draw the line. 
-	 * However hypotenuse might be better used in calculations
+	 * However hypotenuse/length might be better used in calculations
 	 */
-	return { x, y, h }
+	return {
+		x: data.start.x + x,
+		y: data.start.y + y,
+		length: h,
+	}
 
 	function getLengths() {
 		// end point
@@ -241,7 +254,6 @@ function getLength(e) {
 
 		// the hypotenuse that x and y results in
 		let h = pythagorean(x,y)
-
 		return { x, y, h }
 	}
 
