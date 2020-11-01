@@ -15,22 +15,24 @@ const data = {
 		x: e.clientX - data.bounds.left,
 		y: e.clientY - data.bounds.top
 	}),
-	lineEdges: [],
-
-	/**
-	 * ENUM for edge definition
-	 * left and right symbolises 
-	 * the position in lineEdges
-	 * not on screen
-	 */
-	EDGES: {
-		LEFT: 0,
-		RIGHT: 1,
-		NONE: NaN,
-	},
+	lineEdges: () => [ 
+		data.coordinates[EDGE.LEFT], 
+		data.coordinates[EDGE.RIGHT] 
+	],
 
 	/** tracks active edge */
 	edge: NaN,
+}
+/**
+ * ENUM for edge definition
+ * left and right symbolises 
+ * the position in lineEdges
+ * not on screen
+ */
+const EDGE = {
+	LEFT: 0,
+	RIGHT: data.coordinates.length-1,
+	NONE: NaN,
 }
 
 
@@ -57,7 +59,8 @@ window.onresize = () => {
 	canvas.height = innerHeight
 	newLayer()
 }
-mouseDown = e => {
+
+const mouseDown = e => { try {
 	if (!data.isLoaded || data.isDrawing) return
 
 	drawProcess()
@@ -68,8 +71,9 @@ mouseDown = e => {
 
 		if(data.isDrawing) newLayer(e)
 	}
-}
-mouseMove = e => {
+} catch (err) { console.log(err) } }
+
+const mouseMove = e => { try {
 	if(!data.isLoaded) return
 
 	data.isDrawing && drawProcess()
@@ -77,17 +81,14 @@ mouseMove = e => {
 
 	function drawProcess() {
 		const coordinate = getEnd(e)
-	
-		
-		if(data.lineEdges.length !== 1) data.lineEdges[data.edge] = coordinate
 
-		/** exception for the initial/first line */
-		else data.lineEdges[data.EDGES.RIGHT] = coordinate
+		data.coordinates[data.edge] = coordinate
 
 		newLayer(e)
 	}
-}
-mouseUp = e => {
+} catch (err) { console.log(err); data.isDrawing = false } }
+
+const mouseUp = e => { try {
 	if (!data.isLoaded) return
 
 	data.isDrawing && drawProcess()
@@ -95,15 +96,8 @@ mouseUp = e => {
 
 	function drawProcess() {
 		const coordinate = getEnd(e)
-		data.lineEdges[data.edge] = coordinate
-		
-		/** 
-		 * pushes or unshifts coordinate onto 
-		 * data.coordinates depending on which edge 
-		 */
-		;( 
-			array => data.edge === data.EDGES.RIGHT ? array.unshift( coordinate ) : array.push( coordinate )
-		)(data.coordinates)
+
+		data.coordinates[data.edge] = coordinate
 
 		reset()
 		newLayer(e)
@@ -115,7 +109,7 @@ mouseUp = e => {
 			data.index = undefined
 		}
 	}
-}
+} catch (err) { console.log(err) } }
 /** 
  * * End Process 
 */
@@ -130,30 +124,36 @@ function requestNewLine(e) {
 	const coordinate = data.mouseCoordinate(e)
 
 	/** exception for the initial/first line */
-	if(!data.lineEdges.length) {
-		data.edge = data.EDGES.LEFT
-		data.lineEdges[data.EDGES.LEFT] = coordinate
+	if(!data.coordinates.length) {
 		data.coordinates.push(coordinate)
+		data.coordinates.push({x:0,y:0})
 	}
-	
 	/** 
 	 * if the requested start coordinate is within drawRadius 
 	 * of a edge coordinate, then define it as edge
 	 */
-	else data.lineEdges.forEach((edge, index) => {
+	else data.lineEdges().forEach((edge, index) => {
 		const distanceX = Math.abs(coordinate.x - edge.x)
 		const distanceY = Math.abs(coordinate.y - edge.y)
 
 		if(distanceX < drawRadius && distanceY < drawRadius) 
-			if(Object.values(data.EDGES).includes(index))
-				data.edge = index
+			data.edge = EDGE[index]
 	})
-
+	console.log(data.lineEdges())
 	/** Allows drawing if the edge is allowed. (a perhaps not neccessary safe guard) */
-	if([data.EDGES.LEFT, data.EDGES.RIGHT].includes(data.edge)) 
+	if([EDGE.LEFT, EDGE.RIGHT].includes(data.edge)) {
 		data.isDrawing = true
 
-	data.start = data.lineEdges[data.edge]
+		/** 
+		 * pushes or unshifts coordinate onto 
+		 * data.coordinates depending on which edge 
+		 */
+		;( 
+			array => data.edge === EDGE.LEFT ? array.unshift( {} ) : array.push( {} )
+		)(data.coordinates)
+	}
+
+	data.start = data.lineEdges()[data.edge]
 }
 
 function newLayer() {
@@ -171,14 +171,14 @@ function newLayer() {
 	if (data.isDrawing)
 		drawLine({ 
 			start: data.start, 
-			end: data.lineEdges[data.edge] 
+			end: data.coordinates[data.edge] 
 		}, true)
 
 	// draws circles at the edges, to mark where you can draw
-	data.lineEdges.forEach((coordinate, i) => drawCircle(
+	/* data.lineEdges().forEach((coordinate, i) => drawCircle(
 		{ coordinate, radius: preset.drawRadius }, 
 		i === data.edge,
-	))
+	)) */
 	
 	
 
@@ -192,6 +192,7 @@ function newLayer() {
 	}
 
 	function drawCircle({ coordinate: { x, y }, radius }, active){
+		if(!isNumber(radius)) throw new Error('Invalid value')
 		lineStyle(active)
 		ctx.beginPath()
 		ctx.arc(x, y, radius, 0, 2 * Math.PI)
@@ -232,6 +233,8 @@ function getEnd(e) {
 	!y && (y = 0)
 	!h && (h = 0)
 
+	if(!isNumber(x) || !isNumber(y) || !isNumber(h)) throw new Error('Invalid value')
+
 	/**
 	 * x and y are used to draw the line. 
 	 * However hypotenuse/length might be better used in calculations
@@ -243,17 +246,15 @@ function getEnd(e) {
 	}
 
 	function getLengths() {
-		// end point
 		const end = data.mouseCoordinate(e)
 
-		// length of x-axis
 		let x = end.x - data.start.x
 
-		// length of y-axis
 		let y = end.y - data.start.y
 
 		// the hypotenuse that x and y results in
 		let h = pythagorean(x,y)
+
 		return { x, y, h }
 	}
 
@@ -275,4 +276,8 @@ function getEnd(e) {
 
 		return angle
 	}
+}
+
+function isNumber(param) {
+	return typeof param === 'number' && !isNaN(param)
 }
