@@ -1,38 +1,55 @@
 let canvas, ctx
 const preset = {
-	snapDegree: 15,
-	drawRadius: 12.5,
-	lineWidth: 5,
-	activeLineWidthMultiplier: 1.5,
+	canvas: {
+		width: innerWidth,
+		height: innerHeight,
+		color: "#eee",
+	},
+	circle: {
+		radius: 7.5,
+	},
+	line: {
+		snapDegree: 15,
+		width: 5,
+		color: "black",
+		active: {
+			multiplierOfWidth: 1.5,
+			color: "darkred",
+		},
+	},
 }
 const data = {
 	bounds: null,
 	isLoaded: false,
 	isDrawing: false,
 	start: {},
+	end: {},
 	coordinates: [],
 	mouseCoordinate: e => ({
 		x: e.clientX - data.bounds.left,
-		y: e.clientY - data.bounds.top
+		y: e.clientY - data.bounds.top,
 	}),
-	lineEdges: () => [ 
-		data.coordinates[EDGE.LEFT], 
-		data.coordinates[EDGE.RIGHT] 
+	getEdges: () => [
+		data.coordinates[0],
+		data.coordinates[data.coordinates.length-1]
+	],
+	getEdge: (edge = data.edge) => data.coordinates[
+		edge ? data.coordinates.length-1 : 0
 	],
 
 	/** tracks active edge */
-	edge: NaN,
+	edge: undefined,
+	shift: false,
 }
 /**
- * ENUM for edge definition
- * left and right symbolises 
- * the position in lineEdges
- * not on screen
- */
+* ENUM for edge definition
+* left and right symbolises 
+* the position in lineEdges
+* not on screen
+*/
 const EDGE = {
-	LEFT: 0,
-	RIGHT: data.coordinates.length-1,
-	NONE: NaN,
+   LEFT: 0,
+   RIGHT: 1,
 }
 
 
@@ -42,74 +59,100 @@ const EDGE = {
 */
 window.onload = () => {
 	canvas = document.querySelector("canvas")
-	canvas.width = innerWidth
-	canvas.height = innerHeight
+	canvas.width = preset.canvas.width
+	canvas.height = preset.canvas.height
 	data.bounds = canvas.getBoundingClientRect()
 	ctx = canvas.getContext("2d")
 
 	canvas.onmousedown = mouseDown
 	canvas.onmousemove = mouseMove
 	canvas.onmouseup = mouseUp
+	window.onkeydown = keyDown
+	window.onkeyup = keyUp
 
 	data.isLoaded = true
 	newLayer()
 }
 window.onresize = () => {
-	canvas.width = innerWidth
-	canvas.height = innerHeight
+	canvas.width = preset.canvas.width
+	canvas.height = preset.canvas.height
 	newLayer()
 }
-
-const mouseDown = e => { try {
+const mouseDown = e => {
 	if (!data.isLoaded || data.isDrawing) return
 
 	drawProcess()
 
 
 	function drawProcess() {
-		requestNewLine(e)
+		const coordinate = data.mouseCoordinate(e)
 
-		if(data.isDrawing) newLayer(e)
+		if(data.edge === undefined) requestNewLine(coordinate)
+		else allowDraw(coordinate)
+
+		data.isDrawing && newLayer()
 	}
-} catch (err) { console.log(err) } }
-
-const mouseMove = e => { try {
+}
+const mouseMove = e => {
 	if(!data.isLoaded) return
 
 	data.isDrawing && drawProcess()
 
-
 	function drawProcess() {
-		const coordinate = getEnd(e)
+		if(data.coordinates.length === 1) data.edge = EDGE.RIGHT
+		data.end = getEnd(e)
 
-		data.coordinates[data.edge] = coordinate
-
-		newLayer(e)
+		newLayer()
 	}
-} catch (err) { console.log(err); data.isDrawing = false } }
-
-const mouseUp = e => { try {
+}
+const mouseUp = e => {
 	if (!data.isLoaded) return
 
 	data.isDrawing && drawProcess()
 
 
 	function drawProcess() {
-		const coordinate = getEnd(e)
+		data.end = getEnd(e)
 
-		data.coordinates[data.edge] = coordinate
+		data.isDrawing = false
+
+		newLayer()
+	}
+}
+
+const keyDown = e => {
+	if(!data.isLoaded) return
+
+	data.edge !== undefined && e.key === 'Enter' && drawProcess()
+
+	e.shiftKey && (data.shift = true)
+
+	function drawProcess() {
+		/** 
+		 * pushes or unshifts coordinate onto 
+		 * data.coordinates depending on which edge 
+		 */
+		;( 
+			array => data.edge === EDGE.LEFT ? array.unshift( data.end ) : array.push( data.end )
+		)(data.coordinates)
 
 		reset()
-		newLayer(e)
+		newLayer()
 
 		function reset() {
 			data.start = {}
-			data.edge = data.EDGES.NONE
+			data.end = {}
 			data.isDrawing = false
-			data.index = undefined
+			data.edge = undefined
 		}
 	}
-} catch (err) { console.log(err) } }
+}
+const keyUp = e => {
+	!e.shiftKey && (data.shift = false)
+}
+const scroll = () => {
+	ctx.scale(2, 2)
+}
 /** 
  * * End Process 
 */
@@ -119,69 +162,86 @@ const mouseUp = e => { try {
 /** 
  * * Delegations 
 */
-function requestNewLine(e) {
-	const { drawRadius } = preset
-	const coordinate = data.mouseCoordinate(e)
-
+function requestNewLine(coordinate) {
 	/** exception for the initial/first line */
 	if(!data.coordinates.length) {
 		data.coordinates.push(coordinate)
-		data.coordinates.push({x:0,y:0})
+		data.edge = EDGE.LEFT
+		data.isDrawing = true
 	}
+	
 	/** 
 	 * if the requested start coordinate is within drawRadius 
-	 * of a edge coordinate, then define it as edge
+	 * of an edge coordinate, then define it as edge
 	 */
-	else data.lineEdges().forEach((edge, index) => {
+	else allowDraw(coordinate)
+
+	data.start = data.end = data.getEdge()
+}
+
+function allowDraw(coordinate) {
+	if(data.edge !== undefined) {
+		validate(() => {
+			data.isDrawing = true
+		}, data.end)
+	}
+
+	else data.getEdges().forEach((edge, index) => {
+		validate(() => {
+			data.edge = index
+			data.isDrawing = true
+		}, edge)
+	})
+
+	function validate(func, edge) {
 		const distanceX = Math.abs(coordinate.x - edge.x)
 		const distanceY = Math.abs(coordinate.y - edge.y)
 
-		if(distanceX < drawRadius && distanceY < drawRadius) 
-			data.edge = EDGE[index]
-	})
-	console.log(data.lineEdges())
-	/** Allows drawing if the edge is allowed. (a perhaps not neccessary safe guard) */
-	if([EDGE.LEFT, EDGE.RIGHT].includes(data.edge)) {
-		data.isDrawing = true
-
-		/** 
-		 * pushes or unshifts coordinate onto 
-		 * data.coordinates depending on which edge 
-		 */
-		;( 
-			array => data.edge === EDGE.LEFT ? array.unshift( {} ) : array.push( {} )
-		)(data.coordinates)
+		distanceX < preset.circle.radius 
+		&& distanceY < preset.circle.radius 
+		&& func()
+		
 	}
-
-	data.start = data.lineEdges()[data.edge]
 }
 
 function newLayer() {
 	// Hiddes oldlayer
-	ctx.fillStyle = "#eee"
-	ctx.fillRect(0,0,canvas.width,canvas.height)
+	ctx.fillStyle = preset.canvas.color
+	ctx.fillRect( 0, 0, preset.canvas.width, preset.canvas.height )
 	
 	// redraws saved lines
-	for(pointer = 1; pointer < data.coordinates.length; pointer++) drawLine({
-		start: data.coordinates[pointer-1],
-		end: data.coordinates[pointer],
-	})
+	data.coordinates.length && drawLines()
 
 	// draws active line
-	if (data.isDrawing)
-		drawLine({ 
-			start: data.start, 
-			end: data.coordinates[data.edge] 
-		}, true)
-
-	// draws circles at the edges, to mark where you can draw
-	/* data.lineEdges().forEach((coordinate, i) => drawCircle(
-		{ coordinate, radius: preset.drawRadius }, 
-		i === data.edge,
-	)) */
+	drawLine({ 
+		start: data.start, 
+		end: data.end,
+	}, data.isDrawing)
+		
 	
 	
+	// draws circles to mark where you can draw new lines and resize active line
+	;(array => array.forEach(coordinate => coordinate && drawCircle(
+		{ coordinate, radius: preset.circle.radius }, 
+		data.edge !== undefined && data.isDrawing,
+	)))(data.edge !== undefined ? [data.end] : data.getEdges())
 
+	function drawLines() {
+		lineStyle()
+		ctx.beginPath()
+		ctx.moveTo(
+			data.coordinates[0].x, 
+			data.coordinates[0].y
+		)
+		
+		for(pointer = 1; pointer < data.coordinates.length; pointer++)
+			ctx.lineTo(
+				data.coordinates[pointer].x,
+				data.coordinates[pointer].y
+			)
+
+		ctx.stroke()
+	}
 
 	function drawLine({start, end}, active) {
 		lineStyle(active)
@@ -192,7 +252,6 @@ function newLayer() {
 	}
 
 	function drawCircle({ coordinate: { x, y }, radius }, active){
-		if(!isNumber(radius)) throw new Error('Invalid value')
 		lineStyle(active)
 		ctx.beginPath()
 		ctx.arc(x, y, radius, 0, 2 * Math.PI)
@@ -202,11 +261,11 @@ function newLayer() {
 
 	function lineStyle(active) {
 		if(active) {
-			ctx.strokeStyle = "darkred"
-			ctx.lineWidth = preset.lineWidth*preset.activeLineWidthMultiplier
+			ctx.strokeStyle = preset.line.active.color
+			ctx.lineWidth = preset.line.width * preset.line.active.multiplierOfWidth
 		} else {
-			ctx.strokeStyle = "black"
-			ctx.lineWidth = preset.lineWidth
+			ctx.strokeStyle = preset.line.color
+			ctx.lineWidth = preset.line.width
 		}
 	}
 }
@@ -219,21 +278,15 @@ function getEnd(e) {
 	
 	/**
 	 * Length is sufficent to draw the line. 
-	 * However, since the angle needs to be a mutiple of snapDegree,
-	 * it has to be round off to the nerest mutiple 
-	 * and thereafter used to calculate the true length
+	 * However, since the range of motion might need to be restricted, 
+	 * addtionall calculations with the angle is required
 	 */
-	const angle = getAngle()
-	x = h * Math.cos(angle)
-	y = h * Math.sin(angle)
-	h = pythagorean(x,y)
+	rangeOfMotion()
 	
 	// if x,y,h is anything falsy make it 0
 	!x && (x = 0)
 	!y && (y = 0)
 	!h && (h = 0)
-
-	if(!isNumber(x) || !isNumber(y) || !isNumber(h)) throw new Error('Invalid value')
 
 	/**
 	 * x and y are used to draw the line. 
@@ -246,38 +299,57 @@ function getEnd(e) {
 	}
 
 	function getLengths() {
+		// end point
 		const end = data.mouseCoordinate(e)
 
+		// length of x-axis
 		let x = end.x - data.start.x
 
+		// length of y-axis
 		let y = end.y - data.start.y
 
 		// the hypotenuse that x and y results in
 		let h = pythagorean(x,y)
-
 		return { x, y, h }
 	}
 
 	function pythagorean( x, y ) {
+		// c = √a2 + b2
 		return Math.sqrt(( Math.pow(x,2) + Math.pow(y,2) ))
 	}
+	function rangeOfMotion() {
+		/** 
+		 * enables full range of motion 
+		*/ 
+		if(data.shift) return
 
+		/** 
+		 * restricts range of motion 
+		*/
+		const angle = getAngle()
+		x = h * Math.cos(angle)
+		y = h * Math.sin(angle)
+		h = pythagorean(x,y)
+	}
 	function getAngle() {
-		const arctan = Math.atan( y / x )
+		let arctan = Math.atan( y / x )
 		
-		// converts arctan to degrees
+		// convert to degree
 		let degrees = arctan * 180 / Math.PI
 		
 		// rounds of to the nerest multiple of snapDegree 
-		degrees = preset.snapDegree * Math.round(degrees/preset.snapDegree)
+		degrees = preset.line.snapDegree * Math.round( degrees / preset.line.snapDegree) 
 		
-		// converts degrees to arctan 
-		const angle = degrees * Math.PI / 180
+		// revert to arctan 
+		arctan = degrees * Math.PI / 180
 
-		return angle
+		return arctan
 	}
 }
 
-function isNumber(param) {
-	return typeof param === 'number' && !isNaN(param)
+function scrollDirection() {
+	const st = window.pageYOffset || document.documentElement.scrollTop;
+	const direction = st > this.lastScrollTop
+	this.lastScrollTop = st <= 0 ? 0 : st
+	return direction
 }
